@@ -1,85 +1,81 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <iostream>
+#include <cstring>
+#include <cstdlib>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <unistd.h>
-#include <string>   // För att använda std::string
-#include <sstream>  // För att använda std::stringstream
-#include "calcLib.h" // Inkludera headern för din beräkningslogik
+#include <sstream>
 
 #define DEBUG
 
-using namespace std;
-
-void print_error(const char *message) {
-    fprintf(stderr, "ERROR: %s\n", message);
+void print_error(const std::string &message) {
+    std::cerr << "ERROR: " << message << std::endl;
 }
 
 int main(int argc, char *argv[]) {
-    // Kontrollera att användaren skickat rätt argument (hostname:port)
     if (argc != 2) {
         print_error("Usage: ./server <hostname>:<port>");
         return 1;
     }
 
-    char delim[] = ":";  // Delimitern för att dela upp host och port
-    char *Desthost = strtok(argv[1], delim);  // Dela upp i host
-    char *Destport = strtok(NULL, delim);    // Dela upp i port
+    // Dela upp värdnamn och port
+    char *host = strtok(argv[1], ":");
+    char *port_str = strtok(NULL, ":");
 
-    int port = atoi(Destport);  // Konvertera port från sträng till int
+    if (!host || !port_str) {
+        print_error("Invalid format for <hostname>:<port>");
+        return 1;
+    }
 
-    // Debugutskrift: Skriv ut host och port
-    #ifdef DEBUG
-    printf("Host: %s, and Port: %d\n", Desthost, port);
-    #endif
+    int port = std::stoi(port_str);
 
-    // Skapa serverns socket
+#ifdef DEBUG
+    std::cout << "Server listening on " << host << ":" << port << std::endl;
+#endif
+
+    // Skapa socket för servern
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        print_error("ERROR: Cannot open socket");
+        print_error("Unable to open socket");
         return 1;
     }
 
-    struct sockaddr_in server_addr;
-    bzero((char *) &server_addr, sizeof(server_addr));  // Nollställ serverns adressstruktur
+    struct sockaddr_in server_addr, client_addr;
+    bzero((char *)&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;  // Lyssna på alla nätverksinterface
-    server_addr.sin_port = htons(port);  // Sätt porten till den angivna porten
+    server_addr.sin_addr.s_addr = INADDR_ANY;  // Lyssna på alla nätverksadresser
+    server_addr.sin_port = htons(port);
 
-    // Binda serverns socket till den angivna adressen
-    if (bind(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0) {
-        print_error("ERROR: Cannot bind to socket");
+    // Binda servern till en adress
+    if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        print_error("Unable to bind to port");
         return 1;
     }
 
-    listen(sockfd, 5);  // Vänta på inkommande anslutningar
-    printf("Server is listening on port %d...\n", port);
+    listen(sockfd, 5);  // Vänta på klientanslutningar
+    std::cout << "Server is ready, waiting for connections on port " << port << std::endl;
 
-    // Evig loop som accepterar anslutningar från klienter
-    while (1) {
-        struct sockaddr_in client_addr;
+    while (true) {
         socklen_t client_len = sizeof(client_addr);
-        int newsockfd = accept(sockfd, (struct sockaddr *) &client_addr, &client_len);
+        int newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_len);
         if (newsockfd < 0) {
-            print_error("ERROR: Failed to accept connection");
+            print_error("Failed to accept connection");
             continue;
         }
 
-        // Läs operationen som skickas av klienten
+        // Läs klientens operation
         char buffer[256];
         bzero(buffer, 256);
-        int n = read(newsockfd, buffer, 255);  // Läs från klienten
+        int n = read(newsockfd, buffer, 255);
         if (n < 0) {
-            print_error("ERROR: Failed to read from client");
+            print_error("Failed to read from client");
             continue;
         }
 
-        // Bearbeta operationen
-        std::string operation(buffer);  // Skapa en sträng från det mottagna
-        std::string result_str = "OK (myresult=<result>)\n";  // Resultat i rätt format
+        std::string operation(buffer);  // Skapa en sträng från operationen
+        std::string result_str = "OK (myresult=<result>)\n";
 
-        // Här ska du implementera din beräkning. Exempel för add:
+        // Exempel på att hantera operationer som add, sub, mul, div
         int v1, v2, result;
         std::stringstream ss(operation);
         std::string op;
@@ -93,22 +89,24 @@ int main(int argc, char *argv[]) {
             result = v1 * v2;
         } else if (op == "div") {
             result = v1 / v2;
+        } else {
+            result_str = "ERROR: Invalid operation\n";
         }
 
         // Skicka tillbaka resultatet till klienten
         std::stringstream result_stream;
         result_stream << result;
-        result_str.replace(result_str.find("<result>"), 8, result_stream.str());  // Ersätt <result> med det faktiska resultatet
+        result_str.replace(result_str.find("<result>"), 8, result_stream.str());
+        n = write(newsockfd, result_str.c_str(), result_str.length());
 
-        n = write(newsockfd, result_str.c_str(), result_str.length());  // Skicka tillbaka resultatet till klienten
         if (n < 0) {
-            print_error("ERROR: Failed to send result to client");
+            print_error("Failed to send result to client");
             continue;
         }
 
-        close(newsockfd);  // Stäng klientanslutningen när den är klar
+        close(newsockfd);  // Stäng anslutningen när den är klar
     }
 
-    close(sockfd);  // Stäng serverns socket när servern stängs
+    close(sockfd);  // Stäng serverns socket
     return 0;
 }
