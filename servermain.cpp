@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sstream>
+#include <netdb.h>
 
 #define DEBUG
 
@@ -40,15 +41,24 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Resolve hostname to IP address for binding
+    struct hostent *server = gethostbyname(host);
+    if (server == NULL) {
+        print_error("No such host");
+        close(sockfd);
+        return 1;
+    }
+
     struct sockaddr_in server_addr, client_addr;
     bzero((char *)&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;  // Lyssna på alla nätverksadresser
+    server_addr.sin_addr.s_addr = *(unsigned long*)server->h_addr_list[0];  // Use resolved IP
     server_addr.sin_port = htons(port);
 
     // Binda servern till en adress
     if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         print_error("Unable to bind to port");
+        close(sockfd);
         return 1;
     }
 
@@ -69,6 +79,7 @@ int main(int argc, char *argv[]) {
         int n = read(newsockfd, buffer, 255);
         if (n < 0) {
             print_error("Failed to read from client");
+            close(newsockfd);
             continue;
         }
 
@@ -88,19 +99,27 @@ int main(int argc, char *argv[]) {
         } else if (op == "mul") {
             result = v1 * v2;
         } else if (op == "div") {
-            result = v1 / v2;
+            if (v2 == 0) {
+                result_str = "ERROR: Division by zero\n";
+            } else {
+                result = v1 / v2;
+            }
         } else {
             result_str = "ERROR: Invalid operation\n";
         }
 
         // Skicka tillbaka resultatet till klienten
-        std::stringstream result_stream;
-        result_stream << result;
-        result_str.replace(result_str.find("<result>"), 8, result_stream.str());
+        if (result_str.find("<result>") != std::string::npos) {
+            std::stringstream result_stream;
+            result_stream << result;
+            result_str.replace(result_str.find("<result>"), 8, result_stream.str());
+        }
+        
         n = write(newsockfd, result_str.c_str(), result_str.length());
 
         if (n < 0) {
             print_error("Failed to send result to client");
+            close(newsockfd);
             continue;
         }
 

@@ -1,34 +1,16 @@
-CC_FLAGS= -Wall -I.
-LD_FLAGS= -Wall -L./ 
+CC = g++
+CFLAGS = -Wall -Wextra -std=c++11
+TARGETS = server client
 
+all: $(TARGETS)
 
-all: libcalc test client server
+server: servermain.cpp
+	$(CC) $(CFLAGS) -o server servermain.cpp
 
-servermain.o: servermain.cpp
-	$(CXX)  $(CC_FLAGS) $(CFLAGS) -c servermain.cpp 
-
-clientmain.o: clientmain.cpp
-	$(CXX) $(CC_FLAGS) $(CFLAGS) -c clientmain.cpp 
-
-main.o: main.cpp
-	$(CXX) $(CC_FLAGS) $(CFLAGS) -c main.cpp 
-
-
-test: main.o calcLib.o
-	$(CXX) $(LD_FLAGS) -o test main.o -lcalc
-
-client: clientmain.o calcLib.o
-	$(CXX) $(LD_FLAGS) -o client clientmain.o -lcalc
-
-server: servermain.o calcLib.o
-	$(CXX) $(LD_FLAGS) -o server servermain.o -lcalc
-
-
-calcLib.o: calcLib.c calcLib.h
-	gcc -Wall -fPIC -c calcLib.c
-
-libcalc: calcLib.o
-	ar -rc libcalc.a -o calcLib.o
+client: clientmain.cpp
+	$(CC) $(CFLAGS) -o client clientmain.cpp
 
 clean:
-	rm *.o *.a test server client
+	rm -f $(TARGETS)
+
+.PHONY: all clean

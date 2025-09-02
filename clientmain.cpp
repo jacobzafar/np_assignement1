@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 
 #define DEBUG
 
@@ -38,10 +39,19 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    // Resolve hostname to IP address
+    struct hostent *server = gethostbyname(host);
+    if (server == NULL) {
+        print_error("No such host");
+        close(sockfd);
+        return 1;
+    }
+
     struct sockaddr_in server_addr;
+    bzero((char *)&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = inet_addr(host);
+    bcopy((char *)server->h_addr, (char *)&server_addr.sin_addr.s_addr, server->h_length);
 
     // Anslut till servern
     if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
